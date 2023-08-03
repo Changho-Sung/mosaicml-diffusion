@@ -283,9 +283,14 @@ def convert_and_upload_shards(args: Namespace, queue, lower_res: int, upper_res:
                 os.makedirs(os.path.join(args.local, shard))
             tar_filename = os.path.join(args.local, f'{shard}.tar')
             if not os.path.exists(tar_filename):
-                s3.get(os.path.join(args.path, f'{shard}.tar'), tar_filename)
-                with tarfile.open(tar_filename, 'r') as tar:
-                    tar.extractall(os.path.join(args.local, shard))
+                with lock:
+                    logger.info(f"Starting download of {shard}.tar...")
+                    s3.get(os.path.join(args.path, f'{shard}.tar'), tar_filename)
+                    logger.info(f"Done downloading {shard}.tar!")
+                    logger.info(f"Extracting {shard}.tar...")
+                    with tarfile.open(tar_filename, 'r') as tar:
+                        tar.extractall(os.path.join(args.local, shard))
+                    logger.info(f"Done extracting {shard}.tar!")
 
             process_parquet(args, queue, writer, shard, completed_parquets, lower_res, upper_res, bucket_id)
 
@@ -373,4 +378,5 @@ def main(args: Namespace) -> None:
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
+    lock = mp.Lock()
     main(parse_args())

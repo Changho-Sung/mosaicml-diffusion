@@ -104,9 +104,8 @@ def filter_parquet_files(path: str, completed_parquets: Set) -> List:
         List[str]: Each parquet filename.
     """
     shards_to_process = []
-    logger.info(path)
     if not s3.exists(path):
-        logger
+        logger('Path does not exist!!')
         return shards_to_process
     # if not os.path.exists(path):
     #     logger.error(f'Path does not exist!!')

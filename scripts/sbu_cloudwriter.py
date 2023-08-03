@@ -296,7 +296,7 @@ def remove_shards(args: Namespace, queue, signal_queue, num_buckets) -> None:
     if not args.wandb_disabled:
         wandb.init(project=args.wandb_project, entity=args.wandb_entity, name=args.wandb_name)
         wandb.log({'cloudwriter/remove_path': args.remote})
-    logger.info(f'cloudwriter/remove_path: {args.remote}')
+    logger.info(f'cloudwriter/remove_path: {args.local}')
 
     start_time = time.time()
     completed_map = {}
@@ -361,4 +361,5 @@ def main(args: Namespace) -> None:
 
 
 if __name__ == '__main__':
+    mp.set_start_method('spawn')
     main(parse_args())

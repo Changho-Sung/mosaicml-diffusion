@@ -28,3 +28,21 @@ command: |
     --local /tmp/mds-cache/mds-laion2b-en/4.5/256-512/ \
     --remote_upload {YOUR UPLOAD BUCKET HERE} \
     --bucket 1 \
+
+
+  composer precompute_latents_sbu.py \
+    --remote_download s3://initial-ai-datasets/image/downloaded/sbu-captions/ \
+    --local /tmp/mds-cache/mds-sbu/256-512/ \
+    --remote_upload s3://initial-ai-datasets/image/downloaded/sbu-captions-precomputed/ \
+    --bucket 1 \
+    --wandb_disable \
+
+
+python sbu_cloudwriter.py \
+  --path s3://initial-ai-datasets/image/downloaded/sbu-captions/ \
+  --local ./cache/sbu \
+  --remote s3://initial-ai-datasets/image/downloaded/sbu-captions-mds/ \
+  --keep_parquet \
+  --bucketed \
+  --subfolder 1 \
+  --wandb_disable

@@ -27,6 +27,8 @@ warnings.filterwarnings('error', module='PIL', message='Image size')
 
 profile_session = aiobotocore.session.AioSession(profile='toonie')
 s3 = s3fs.S3FileSystem(session=profile_session)
+mp.set_start_method('spawn')
+lock = mp.Lock()
 
 def parse_args() -> Namespace:
     """Parse command-line arguments.
@@ -377,6 +379,4 @@ def main(args: Namespace) -> None:
 
 
 if __name__ == '__main__':
-    mp.set_start_method('spawn')
-    lock = mp.Lock()
     main(parse_args())

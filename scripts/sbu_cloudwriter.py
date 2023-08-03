@@ -181,14 +181,14 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
     n_rows = table.num_rows
     table = table.to_pandas()
 
-    # Download .tar file and extract all files into local cache dicrectory
-    if not os.path.exists(os.path.join(args.local, shard)):
-        os.makedirs(os.path.join(args.local, shard))
-    tar_filename = os.path.join(args.local, f'{shard}.tar')
-    if not os.path.exists(tar_filename):
-        s3.get(os.path.join(args.path, f'{shard}.tar'), tar_filename)
-        with tarfile.open(tar_filename, 'r') as tar:
-            tar.extractall(os.path.join(args.local, shard))
+    # # Download .tar file and extract all files into local cache dicrectory
+    # if not os.path.exists(os.path.join(args.local, shard)):
+    #     os.makedirs(os.path.join(args.local, shard))
+    # tar_filename = os.path.join(args.local, f'{shard}.tar')
+    # if not os.path.exists(tar_filename):
+    #     s3.get(os.path.join(args.path, f'{shard}.tar'), tar_filename)
+    #     with tarfile.open(tar_filename, 'r') as tar:
+    #         tar.extractall(os.path.join(args.local, shard))
 
     # Iterate through rows of parquet file
     for i in range(n_rows):
@@ -277,6 +277,16 @@ def convert_and_upload_shards(args: Namespace, queue, lower_res: int, upper_res:
         start_time = time.time()
 
         for shard in shards_to_process:
+            # check tar file download is complete
+            # Download .tar file and extract all files into local cache dicrectory
+            if not os.path.exists(os.path.join(args.local, shard)):
+                os.makedirs(os.path.join(args.local, shard))
+            tar_filename = os.path.join(args.local, f'{shard}.tar')
+            if not os.path.exists(tar_filename):
+                s3.get(os.path.join(args.path, f'{shard}.tar'), tar_filename)
+                with tarfile.open(tar_filename, 'r') as tar:
+                    tar.extractall(os.path.join(args.local, shard))
+
             process_parquet(args, queue, writer, shard, completed_parquets, lower_res, upper_res, bucket_id)
 
         elapsed_time = time.time() - start_time

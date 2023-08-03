@@ -27,8 +27,6 @@ warnings.filterwarnings('error', module='PIL', message='Image size')
 
 profile_session = aiobotocore.session.AioSession(profile='toonie')
 s3 = s3fs.S3FileSystem(session=profile_session)
-mp.set_start_method('spawn')
-lock = mp.Lock()
 
 def parse_args() -> Namespace:
     """Parse command-line arguments.
@@ -246,7 +244,7 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
     completed_parquets.add(shard)
 
 
-def convert_and_upload_shards(args: Namespace, queue, lower_res: int, upper_res: int, bucket_id: int):
+def convert_and_upload_shards(args: Namespace, queue, lock, lower_res: int, upper_res: int, bucket_id: int):
     """Process any newly downloaded shards."""
     columns = {
         'caption': 'str',
@@ -356,6 +354,7 @@ def main(args: Namespace) -> None:
     """
     queue = mp.Queue()
     signal_queue = mp.Queue()
+    lock = mp.Lock()
 
     # Append 0 and "infinity" to bin resolutions
     if args.bucketed:
@@ -365,7 +364,7 @@ def main(args: Namespace) -> None:
     uploaders = []
     for bucket_id in range(len(bin_resolutions) - 1):
         uploader = mp.Process(target=convert_and_upload_shards,
-                              args=(args, queue, bin_resolutions[bucket_id], bin_resolutions[bucket_id + 1], bucket_id))
+                              args=(args, queue, lock, bin_resolutions[bucket_id], bin_resolutions[bucket_id + 1], bucket_id))
         uploader.start()
         uploaders.append(uploader)
 
@@ -379,4 +378,5 @@ def main(args: Namespace) -> None:
 
 
 if __name__ == '__main__':
+    mp.set_start_method('spawn')
     main(parse_args())

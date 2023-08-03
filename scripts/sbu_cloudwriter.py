@@ -14,6 +14,7 @@ from typing import List, Optional, Set, Union
 import numpy as np
 import wandb
 import s3fs
+import aiobotocore
 from PIL import Image
 from pyarrow import parquet as pq
 from streaming import MDSWriter
@@ -22,7 +23,8 @@ from loguru import logger
 # Change PIL image size warnings to be errors
 warnings.filterwarnings('error', module='PIL', message='Image size')
 
-s3 = s3fs.S3FileSystem(anon=False)
+profile_session = aiobotocore.session.AioSession(profile='toonie')
+s3 = s3fs.S3FileSystem(session=profile_session)
 
 def parse_args() -> Namespace:
     """Parse command-line arguments.
@@ -93,6 +95,7 @@ def filter_parquet_files(path: str, completed_parquets: Set) -> List:
         List[str]: Each parquet filename.
     """
     shards_to_process = []
+    logger.info(path)
     if not s3.exists(path):
         logger
         return shards_to_process
@@ -104,7 +107,7 @@ def filter_parquet_files(path: str, completed_parquets: Set) -> List:
     # for filename in sorted(os.listdir(path)):
         # If _stats.json file is present, the parquet file has finished downloading
         if filename.endswith('_stats.json'):
-            idx = filename.split('_')[0]
+            idx = os.path.basename(filename).split('_')[0]
             if idx not in completed_parquets:
                 shards_to_process.append(idx)
 
@@ -166,7 +169,7 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
     """Process a parquet file and upload to MDS."""
     # Open parquet file
     parquet_filename = os.path.join(args.path, f'{shard}.parquet')
-    table = pq.read_table(parquet_filename)
+    table = pq.read_table(parquet_filename, filesystem=s3)
     n_rows = table.num_rows
     table = table.to_pandas()
 
@@ -324,13 +327,13 @@ def main(args: Namespace) -> None:
                               args=(args, queue, bin_resolutions[bucket_id], bin_resolutions[bucket_id + 1], bucket_id))
         uploader.start()
         uploaders.append(uploader)
-    remove = mp.Process(target=remove_shards, args=(args, queue, signal_queue, len(bin_resolutions) - 1))
-    remove.start()
+    # remove = mp.Process(target=remove_shards, args=(args, queue, signal_queue, len(bin_resolutions) - 1))
+    # remove.start()
 
     for uploader in uploaders:
         uploader.join()
     signal_queue.put(1)
-    remove.join()
+    # remove.join()
 
 
 if __name__ == '__main__':

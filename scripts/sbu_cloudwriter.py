@@ -15,6 +15,8 @@ import numpy as np
 import wandb
 import s3fs
 import aiobotocore
+import tarfile
+import json
 from PIL import Image
 from pyarrow import parquet as pq
 from streaming import MDSWriter
@@ -37,10 +39,17 @@ def parse_args() -> Namespace:
                       type=str,
                       required=True,
                       help='Local or Remote directory containing downloaded shards in parquet format.')
+    args.add_argument('--local',
+                      type=str,
+                      default='./cache/sbu/',
+                      help='Local path to cache MDS-formatted shards to.')
     args.add_argument('--remote', type=str, default='', help='Remote path to upload MDS-formatted shards to.')
     args.add_argument('--keep_parquet',
                       action='store_true',
                       help='Whether to keep the parquet shards after conversion (about 10TB).')
+    args.add_argument('--keep_cache',
+                      action='store_true',
+                      help='Whether to keep the local cache after conversion.')
     args.add_argument('--poll_interval',
                       type=float,
                       default=30,
@@ -173,6 +182,15 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
     n_rows = table.num_rows
     table = table.to_pandas()
 
+    # Download .tar file and extract all files into local cache dicrectory
+    if not os.path.exists(args.local):
+        os.makedirs(args.local)
+    tar_filename = os.path.join(args.local, f'{shard}.tar')
+    if not os.path.exists(tar_filename):
+        s3.download_file(os.path.join(args.path, f'{shard}.tar'), tar_filename)
+        with tarfile.open(tar_filename, 'r') as tar:
+            tar.extractall(args.local)
+
     # Iterate through rows of parquet file
     for i in range(n_rows):
         x = table.iloc[i]
@@ -181,9 +199,18 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
         success = x['status'] == 'success'
         width, height = get_int(x['width']), get_int(x['height'])
         if success:
+            # update x from json file
+            json_filename = os.path.join(args.local, shard, f'{x["key"]}.json')
+            with open(json_filename, 'r') as f:
+                x.update(json.load(f))
+
             try:
-                img = Image.open(BytesIO(x['jpg']))
+                img_filename = os.path.join(args.local, shard, f'{x["key"]}.jpg')
+                img = Image.open(img_filename)
                 width, height = img.size
+                # convert .jpg to binary
+                img_binary = img.tobytes()
+                x['jpg'] = img_binary
             except Exception as e:
                 # print(e)
                 logger.error(e)
@@ -192,9 +219,9 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
         success &= lower_res <= min(width, height) < upper_res
         if success:
             sample = {
-                'punsafe': get_float(x['punsafe']),
-                'pwatermark': get_float(x['pwatermark']),
+                'NSFW': get_str(x['NSFW']),
                 'similarity': get_float(x['similarity']),
+                'LICENSE': get_str(x['LICENSE']),
                 'caption': get_str(x['caption']),
                 'url': get_str(x['url']),
                 'key': get_str(x['key']),
@@ -206,8 +233,7 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
                 'original_height': get_int(x['original_height']),
                 'exif': get_str(x['exif']),
                 'jpg': get_bytes(x['jpg']),
-                'hash': get_int(x['hash']),
-                'aesthetic_score': get_float(x['AESTHETIC_SCORE']) if 'AESTHETIC_SCORE' in x.keys() else 0.0,
+                'sha256': get_str(x['sha256']),
             }
             writer.write(sample)
 
@@ -222,9 +248,9 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
 def convert_and_upload_shards(args: Namespace, queue, lower_res: int, upper_res: int, bucket_id: int):
     """Process any newly downloaded shards."""
     columns = {
-        'punsafe': 'float64',
-        'pwatermark': 'float64',
+        'NSFW': 'str',
         'similarity': 'float64',
+        'LICENSE': 'str',
         'caption': 'str',
         'url': 'str',
         'key': 'str',
@@ -236,8 +262,7 @@ def convert_and_upload_shards(args: Namespace, queue, lower_res: int, upper_res:
         'original_height': 'int32',
         'exif': 'str',
         'jpg': 'bytes',
-        'hash': 'int64',
-        'aesthetic_score': 'float64',
+        'sha256': 'str',
     }
 
     logger.info(f'Starting uploader processs for bucket {bucket_id}...')
@@ -296,6 +321,9 @@ def remove_shards(args: Namespace, queue, signal_queue, num_buckets) -> None:
                 if not args.keep_parquet:
                     os.remove(os.path.join(args.path, f'{shard}.parquet'))
                     os.remove(os.path.join(args.path, f'{shard}_stats.json'))
+                if not args.keep_cache:
+                    os.remove(os.path.join(args.local, f'{shard}.tar'))
+                    os.rmdir(os.path.join(args.local, shard))
         else:
             time.sleep(1)
 

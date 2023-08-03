@@ -182,13 +182,13 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
     table = table.to_pandas()
 
     # Download .tar file and extract all files into local cache dicrectory
-    if not os.path.exists(args.local):
-        os.makedirs(args.local)
+    if not os.path.exists(os.path.join(args.local, shard)):
+        os.makedirs(os.path.join(args.local, shard))
     tar_filename = os.path.join(args.local, f'{shard}.tar')
     if not os.path.exists(tar_filename):
-        s3.download_file(os.path.join(args.path, f'{shard}.tar'), tar_filename)
+        s3.get(os.path.join(args.path, f'{shard}.tar'), tar_filename)
         with tarfile.open(tar_filename, 'r') as tar:
-            tar.extractall(args.local)
+            tar.extractall(os.path.join(args.local, shard))
 
     # Iterate through rows of parquet file
     for i in range(n_rows):
@@ -200,8 +200,11 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
         if success:
             # update x from json file
             json_filename = os.path.join(args.local, shard, f'{x["key"]}.json')
-            with open(json_filename, 'r') as f:
-                x.update(json.load(f))
+            try:
+                with open(json_filename, 'r') as f:
+                    x.update(json.load(f))
+            except Exception as e:
+                pass
 
             try:
                 img_filename = os.path.join(args.local, shard, f'{x["key"]}.jpg')
@@ -218,9 +221,6 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
         success &= lower_res <= min(width, height) < upper_res
         if success:
             sample = {
-                'NSFW': get_str(x['NSFW']),
-                'similarity': get_float(x['similarity']),
-                'LICENSE': get_str(x['LICENSE']),
                 'caption': get_str(x['caption']),
                 'url': get_str(x['url']),
                 'key': get_str(x['key']),
@@ -247,9 +247,6 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
 def convert_and_upload_shards(args: Namespace, queue, lower_res: int, upper_res: int, bucket_id: int):
     """Process any newly downloaded shards."""
     columns = {
-        'NSFW': 'str',
-        'similarity': 'float64',
-        'LICENSE': 'str',
         'caption': 'str',
         'url': 'str',
         'key': 'str',
@@ -354,13 +351,13 @@ def main(args: Namespace) -> None:
                               args=(args, queue, bin_resolutions[bucket_id], bin_resolutions[bucket_id + 1], bucket_id))
         uploader.start()
         uploaders.append(uploader)
-    # remove = mp.Process(target=remove_shards, args=(args, queue, signal_queue, len(bin_resolutions) - 1))
-    # remove.start()
+    remove = mp.Process(target=remove_shards, args=(args, queue, signal_queue, len(bin_resolutions) - 1))
+    remove.start()
 
     for uploader in uploaders:
         uploader.join()
     signal_queue.put(1)
-    # remove.join()
+    remove.join()
 
 
 if __name__ == '__main__':

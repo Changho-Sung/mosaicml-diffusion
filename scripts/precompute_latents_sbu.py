@@ -329,6 +329,8 @@ def main(args: Namespace) -> None:
             writer.write(mds_sample)
         if not args.wandb_disabled and dist.get_local_rank() == 0:
             wandb.log({'batch': batch_idx, 'progress': batch_idx / len(dataloader)})
+        if dist.get_global_rank() == 0:
+            logger.info(f'Batch {batch_idx} / {len(dataloader)} : Progress {batch_idx / len(dataloader)}')
 
         dist.barrier()
         max_sample_idx += args.batch_size * dist.get_world_size()

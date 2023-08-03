@@ -41,7 +41,7 @@ def parse_args() -> Namespace:
                       help='Local or Remote directory containing downloaded shards in parquet format.')
     args.add_argument('--local',
                       type=str,
-                      default='./cache/sbu/',
+                      default='./cache/sbu',
                       help='Local path to cache MDS-formatted shards to.')
     args.add_argument('--remote', type=str, default='', help='Remote path to upload MDS-formatted shards to.')
     args.add_argument('--keep_parquet',

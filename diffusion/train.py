@@ -74,6 +74,8 @@ def train(config: DictConfig) -> None:
                     # use _partial_ so it doesn't try to init everything
                     wandb_logger = hydra.utils.instantiate(lg_conf, _partial_=True)
                     logger.append(wandb_logger(init_kwargs={'config': container}))
+                elif log == 'tensorboard':
+                    logger.append(hydra.utils.instantiate(lg_conf, log_dir=config.log_dir))
                 else:
                     logger.append(hydra.utils.instantiate(lg_conf))
 

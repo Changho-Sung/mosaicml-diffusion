@@ -351,12 +351,13 @@ def main(args: Namespace) -> None:
                               args=(args, queue, bin_resolutions[bucket_id], bin_resolutions[bucket_id + 1], bucket_id))
         uploader.start()
         uploaders.append(uploader)
-    remove = mp.Process(target=remove_shards, args=(args, queue, signal_queue, len(bin_resolutions) - 1))
-    remove.start()
 
     for uploader in uploaders:
         uploader.join()
     signal_queue.put(1)
+
+    remove = mp.Process(target=remove_shards, args=(args, queue, signal_queue, len(bin_resolutions) - 1))
+    remove.start()
     remove.join()
 
 

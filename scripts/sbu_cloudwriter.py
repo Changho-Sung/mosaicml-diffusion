@@ -13,6 +13,7 @@ from typing import List, Optional, Set, Union
 
 import numpy as np
 import wandb
+import s3fs
 from PIL import Image
 from pyarrow import parquet as pq
 from streaming import MDSWriter
@@ -21,6 +22,7 @@ from loguru import logger
 # Change PIL image size warnings to be errors
 warnings.filterwarnings('error', module='PIL', message='Image size')
 
+s3 = s3fs.S3FileSystem(anon=False)
 
 def parse_args() -> Namespace:
     """Parse command-line arguments.
@@ -70,10 +72,15 @@ def is_download_complete(path: str) -> bool:
     Returns:
         bool: True if all shards have been downloaded.
     """
-    if not os.path.exists(path):
-        print('Path does not exist!!')
+    if not s3.exists(path):
+        logger.error(f'Path does not exist!!')
         return False
-    return os.path.exists(os.path.join(path, 'done'))
+    return s3.exists(os.path.join(path, 'done'))
+
+    # if not os.path.exists(path):
+    #     logger.error(f'Path does not exist!!')
+    #     return False
+    # return os.path.exists(os.path.join(path, 'done'))
 
 
 def filter_parquet_files(path: str, completed_parquets: Set) -> List:
@@ -86,10 +93,15 @@ def filter_parquet_files(path: str, completed_parquets: Set) -> List:
         List[str]: Each parquet filename.
     """
     shards_to_process = []
-    if not os.path.exists(path):
-        print('Path does not exist!!')
+    if not s3.exists(path):
+        logger
         return shards_to_process
-    for filename in sorted(os.listdir(path)):
+    # if not os.path.exists(path):
+    #     logger.error(f'Path does not exist!!')
+    #     return shards_to_process
+
+    for filename in sorted(s3.ls(path)):
+    # for filename in sorted(os.listdir(path)):
         # If _stats.json file is present, the parquet file has finished downloading
         if filename.endswith('_stats.json'):
             idx = filename.split('_')[0]
@@ -170,7 +182,8 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
                 img = Image.open(BytesIO(x['jpg']))
                 width, height = img.size
             except Exception as e:
-                print(e)
+                # print(e)
+                logger.error(e)
                 # if unable to decode image, set success to false
                 success = False
         success &= lower_res <= min(width, height) < upper_res
@@ -224,7 +237,7 @@ def convert_and_upload_shards(args: Namespace, queue, lower_res: int, upper_res:
         'aesthetic_score': 'float64',
     }
 
-    print(f'Starting uploader processs for bucket {bucket_id}...')
+    logger.info(f'Starting uploader processs for bucket {bucket_id}...')
     remote_path = os.path.join(args.remote, f'{lower_res}-{upper_res}')
     if args.subfolder is not None:
         remote_path = os.path.join(remote_path, args.subfolder)
@@ -249,12 +262,12 @@ def convert_and_upload_shards(args: Namespace, queue, lower_res: int, upper_res:
         shards_to_process = filter_parquet_files(path=args.path, completed_parquets=completed_parquets)
 
     writer.finish()
-    print(f'Finished uploader process for bucket {bucket_id}...')
+    logger.info(f'Finished uploader process for bucket {bucket_id}...')
 
 
 def remove_shards(args: Namespace, queue, signal_queue, num_buckets) -> None:
     """Remove shards from local or remote directory as they are completed."""
-    print(f'Starting remover process...')
+    logger.info(f'Starting remover process...')
 
     if not args.wandb_disabled:
         wandb.init(project=args.wandb_project, entity=args.wandb_entity, name=args.wandb_name)
@@ -275,7 +288,7 @@ def remove_shards(args: Namespace, queue, signal_queue, num_buckets) -> None:
                 if not args.wandb_disabled:
                     wandb.log({'cloudwriter/count': completed_count})
                 logger.info(f'cloudwriter/count: {completed_count}')
-                print(
+                logger.info(
                     f'Shard {shard} finished. Completed {completed_count} shards in {time.time() - start_time} seconds')
                 if not args.keep_parquet:
                     os.remove(os.path.join(args.path, f'{shard}.parquet'))
@@ -288,7 +301,7 @@ def remove_shards(args: Namespace, queue, signal_queue, num_buckets) -> None:
         logger.info(f'finished: True')
         if not signal_queue.empty():
             break
-    print(f'Finished remover process...')
+    logger.info(f'Finished remover process...')
 
 
 def main(args: Namespace) -> None:

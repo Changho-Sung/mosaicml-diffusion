@@ -100,14 +100,15 @@ class StreamingSBUDataset(StreamingDataset):
         tokenized_caption = torch.tensor(tokenized_caption)
 
         if self.transform is None:
-            img = Image.open(BytesIO(sample['jpg']).content)
+            import pdb; pdb.set_trace()
+            img = Image.open(BytesIO(sample['jpg']))
             if img.mode != 'RGB':
                 img = img.convert('RGB')
             return {'image': img, 'captions': tokenized_caption, 'sample': sample}
         else:
             ret = {'captions': tokenized_caption, 'sample': sample}
             for i, tr in enumerate(self.transform):
-                img = Image.open(BytesIO(sample['jpg']).content)
+                img = Image.open(BytesIO(sample['jpg']))
                 if img.mode != 'RGB':
                     img = img.convert('RGB')
                 img = tr(img)

@@ -18,6 +18,7 @@ import multiprocessing as mp
 import os
 import time
 import warnings
+from io import BytesIO
 from argparse import ArgumentParser, Namespace
 from typing import List, Optional, Set, Union
 
@@ -199,9 +200,9 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
                 img = Image.open(img_filename)
                 width, height = img.size
                 # convert .jpg to binary
-                img_binary = img.tobytes()
-                
-                x['jpg'] = img_binary
+                img_binary = BytesIO()
+                img.save(img_binary, format='JPEG')
+                x['jpg'] = img_binary.getvalue()
             except Exception as e:
                 # print(e)
                 logger.error(e)

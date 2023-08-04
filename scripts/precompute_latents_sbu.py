@@ -99,7 +99,6 @@ class StreamingSBUDataset(StreamingDataset):
         )['input_ids']
         tokenized_caption = torch.tensor(tokenized_caption)
 
-        print(sample['jpg'])
         if self.transform is None:
             img = Image.open(BytesIO(sample['jpg']))
             if img.mode != 'RGB':

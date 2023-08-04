@@ -21,6 +21,7 @@ from PIL import Image
 from pyarrow import parquet as pq
 from streaming import MDSWriter
 from loguru import logger
+from tqdm import tqdm
 
 # Change PIL image size warnings to be errors
 warnings.filterwarnings('error', module='PIL', message='Image size')
@@ -191,7 +192,7 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
     #         tar.extractall(os.path.join(args.local, shard))
 
     # Iterate through rows of parquet file
-    for i in range(n_rows):
+    for i in tqdm(range(n_rows)):
         x = table.iloc[i].copy()
 
         # Only write samples that were successfully downloaded
@@ -283,17 +284,16 @@ def convert_and_upload_shards(args: Namespace, queue, lock, lower_res: int, uppe
             # check tar file download is complete
             # Download .tar file and extract all files into local cache dicrectory
             if not os.path.exists(os.path.join(args.local, shard)):
-                os.makedirs(os.path.join(args.local, shard))
+                os.makedirs(os.path.join(args.local, shard), exist_ok=True)
             tar_filename = os.path.join(args.local, f'{shard}.tar')
-            with lock:
-                if not os.path.exists(tar_filename):
-                    logger.info(f"Starting download of {shard}.tar...")
-                    s3.get(os.path.join(args.path, f'{shard}.tar'), tar_filename)
-                    logger.info(f"Done downloading {shard}.tar!")
-                    logger.info(f"Extracting {shard}.tar...")
-                    with tarfile.open(tar_filename, 'r') as tar:
-                        tar.extractall(os.path.join(args.local, shard))
-                    logger.info(f"Done extracting {shard}.tar!")
+            if not os.path.exists(tar_filename):
+                logger.info(f"Starting download of {shard}.tar...")
+                s3.get(os.path.join(args.path, f'{shard}.tar'), tar_filename)
+                logger.info(f"Done downloading {shard}.tar!")
+                logger.info(f"Extracting {shard}.tar...")
+                with tarfile.open(tar_filename, 'r') as tar:
+                    tar.extractall(os.path.join(args.local, shard))
+                logger.info(f"Done extracting {shard}.tar!")
 
             process_parquet(args, queue, writer, shard, completed_parquets, lower_res, upper_res, bucket_id)
 

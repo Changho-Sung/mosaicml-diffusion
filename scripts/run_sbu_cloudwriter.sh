@@ -5,3 +5,4 @@ python sbu_cloudwriter.py \
   --keep_parquet \
   --bucketed \
   --subfolder 1
+  

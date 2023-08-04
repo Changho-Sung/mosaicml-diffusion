@@ -94,7 +94,7 @@ def is_download_complete(path: str) -> bool:
     # return os.path.exists(os.path.join(path, 'done'))
 
 
-def filter_parquet_files(path: str, completed_parquets: Set, downloading_parquets: Set) -> List:
+def filter_parquet_files(path: str, completed_parquets: Set, processing_parquets: Set) -> List:
     """List of parquet files to convert into MDS shards in sorted order.
 
     Args:
@@ -116,7 +116,7 @@ def filter_parquet_files(path: str, completed_parquets: Set, downloading_parquet
         # If _stats.json file is present, the parquet file has finished downloading
         if filename.endswith('_stats.json'):
             idx = os.path.basename(filename).split('_')[0]
-            if idx not in completed_parquets and idx not in downloading_parquets:
+            if idx not in completed_parquets and idx not in processing_parquets:
                 shards_to_process.append(idx)
 
     return shards_to_process
@@ -272,13 +272,14 @@ def convert_and_upload_shards(args: Namespace, queue, lock, lower_res: int, uppe
                        size_limit=256 * (2**20),
                        max_workers=64)
     completed_parquets = set()
-    downloading_parquets = set()
+    processing_parquets = set()
     shards_to_process = filter_parquet_files(path=args.path, 
-                                             completed_parquets=completed_parquets, downloading_parquets=downloading_parquets)
+                                             completed_parquets=completed_parquets, processing_parquets=processing_parquets)
     while not is_download_complete(args.path) or len(shards_to_process) > 0:
         start_time = time.time()
 
         for shard in shards_to_process:
+            processing_parquets.add(shard)
             # check tar file download is complete
             # Download .tar file and extract all files into local cache dicrectory
             if not os.path.exists(os.path.join(args.local, shard)):
@@ -286,7 +287,6 @@ def convert_and_upload_shards(args: Namespace, queue, lock, lower_res: int, uppe
             tar_filename = os.path.join(args.local, f'{shard}.tar')
             # with lock:
             if not os.path.exists(tar_filename):
-                downloading_parquets.add(shard)
                 logger.info(f"Starting download of {shard}.tar...")
                 s3.get(os.path.join(args.path, f'{shard}.tar'), tar_filename)
                 logger.info(f"Done downloading {shard}.tar!")
@@ -294,7 +294,6 @@ def convert_and_upload_shards(args: Namespace, queue, lock, lower_res: int, uppe
                 with tarfile.open(tar_filename, 'r') as tar:
                     tar.extractall(os.path.join(args.local, shard))
                 logger.info(f"Done extracting {shard}.tar!")
-                downloading_parquets.remove(shard)
 
             process_parquet(args, queue, writer, shard, completed_parquets, lower_res, upper_res, bucket_id)
 

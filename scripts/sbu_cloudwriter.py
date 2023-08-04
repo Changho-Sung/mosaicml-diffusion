@@ -192,7 +192,7 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
 
     # Iterate through rows of parquet file
     for i in range(n_rows):
-        x = table.iloc[i].copy()
+        x = table.iloc[i]
 
         # Only write samples that were successfully downloaded
         success = x['status'] == 'success'

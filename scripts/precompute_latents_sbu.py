@@ -1,7 +1,17 @@
-# Copyright 2022 MosaicML Diffusion authors
-# SPDX-License-Identifier: Apache-2.0
+"""Tag SBU with latents.
 
-"""Tag SBU with latents."""
+This script tags the SBU dataset with latents from a VAE and CLIP text encoder. The latents are stored in the
+MDS format and uploaded to S3.
+
+Usage:
+    python precompute_latents_sbu.py \
+        --remote_download <remote_download> \
+        --local <local> \
+        --remote_upload <remote_upload> \
+        --bucket <bucket> \
+        --model_name <model_name> \
+        --batch-size <batch_size>
+"""
 
 import os
 from argparse import ArgumentParser, Namespace
@@ -210,11 +220,6 @@ def parse_args() -> Namespace:
                       default='stabilityai/stable-diffusion-2-base',
                       help='Name of model to use for encoding.')
     args.add_argument('--batch-size', type=int, default=64, help='Batch size to use for encoding.')
-    # Add wandb arguments
-    args.add_argument('--wandb_disabled', action='store_true')
-    args.add_argument('--wandb_name', type=str, default='baseline')
-    args.add_argument('--wandb_project', type=str, default='sbu-latents')
-    args.add_argument('--wandb_entity', type=str, default='mosaic-ml')
     return args.parse_args()
 
 
@@ -224,8 +229,6 @@ def main(args: Namespace) -> None:
     Args:
         args (Namespace): Command-line arguments.
     """
-    if not args.wandb_disabled and dist.get_local_rank() == 0:
-        wandb.init(name=args.wandb_name, project=args.wandb_project, entity=args.wandb_entity)
 
     dataloader = build_streaming_sbu_dataloader(
         remote=[os.path.join(args.remote_download, str(args.bucket))],
@@ -251,9 +254,6 @@ def main(args: Namespace) -> None:
     text_encoder = device.module_to_device(text_encoder)
 
     columns = {
-        'punsafe': 'float64',
-        'pwatermark': 'float64',
-        'similarity': 'float64',
         'caption': 'str',
         'url': 'str',
         'key': 'str',
@@ -265,8 +265,7 @@ def main(args: Namespace) -> None:
         'original_height': 'int32',
         'exif': 'str',
         'jpg': 'bytes',
-        'hash': 'int64',
-        'aesthetic_score': 'float64',
+        'sha256': 'str',
         'caption_latents': 'bytes',
         'latents_256': 'bytes',
         'latents_512': 'bytes',
@@ -306,9 +305,6 @@ def main(args: Namespace) -> None:
             latents_512_sample = latents_512[i].tobytes() if min(sample['width'][i],
                                                                  sample['height'][i]) >= 512 else b''
             mds_sample = {
-                'punsafe': sample['punsafe'][i],
-                'pwatermark': sample['pwatermark'][i],
-                'similarity': sample['similarity'][i],
                 'caption': sample['caption'][i],
                 'url': sample['url'][i],
                 'key': sample['key'][i],
@@ -320,15 +316,12 @@ def main(args: Namespace) -> None:
                 'original_height': sample['original_height'][i],
                 'exif': sample['exif'][i],
                 'jpg': sample['jpg'][i],
-                'hash': sample['hash'][i],
-                'aesthetic_score': sample['aesthetic_score'][i],
+                'sha256': sample['sha256'][i],
                 'caption_latents': conditioning[i].tobytes(),
                 'latents_256': latents_256_sample,
                 'latents_512': latents_512_sample,
             }
             writer.write(mds_sample)
-        if not args.wandb_disabled and dist.get_local_rank() == 0:
-            wandb.log({'batch': batch_idx, 'progress': batch_idx / len(dataloader)})
         if dist.get_global_rank() == 0:
             logger.info(f'Batch {batch_idx} / {len(dataloader)} : Progress {batch_idx / len(dataloader)}')
 

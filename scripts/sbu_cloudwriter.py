@@ -67,10 +67,10 @@ def parse_args() -> Namespace:
                       help='Stores data inside each bucket subfolder. Useful for running multiple '
                       'parallel downloads.')
     # Add wandb arguments
-    args.add_argument('--wandb_disabled', action='store_true')
-    args.add_argument('--wandb_name', type=str, default='baseline')
-    args.add_argument('--wandb_project', type=str, default='laion-dataset')
-    args.add_argument('--wandb_entity', type=str, default='mosaic-ml')
+    # args.add_argument('--wandb_disabled', action='store_true')
+    # args.add_argument('--wandb_name', type=str, default='baseline')
+    # args.add_argument('--wandb_project', type=str, default='laion-dataset')
+    # args.add_argument('--wandb_entity', type=str, default='mosaic-ml')
     return args.parse_args()
 
 
@@ -94,7 +94,7 @@ def is_download_complete(path: str) -> bool:
     # return os.path.exists(os.path.join(path, 'done'))
 
 
-def filter_parquet_files(path: str, completed_parquets: Set, processing_parquets: Set) -> List:
+def filter_parquet_files(path: str, completed_parquets: Set, downloading_parquets: Set) -> List:
     """List of parquet files to convert into MDS shards in sorted order.
 
     Args:
@@ -116,7 +116,7 @@ def filter_parquet_files(path: str, completed_parquets: Set, processing_parquets
         # If _stats.json file is present, the parquet file has finished downloading
         if filename.endswith('_stats.json'):
             idx = os.path.basename(filename).split('_')[0]
-            if idx not in completed_parquets and idx not in processing_parquets:
+            if idx not in completed_parquets and idx not in downloading_parquets:
                 shards_to_process.append(idx)
 
     return shards_to_process
@@ -192,7 +192,7 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
 
     # Iterate through rows of parquet file
     for i in range(n_rows):
-        x = table.iloc[i]
+        x = table.iloc[i].copy()
 
         # Only write samples that were successfully downloaded
         success = x['status'] == 'success'
@@ -272,28 +272,29 @@ def convert_and_upload_shards(args: Namespace, queue, lock, lower_res: int, uppe
                        size_limit=256 * (2**20),
                        max_workers=64)
     completed_parquets = set()
-    processing_parquets = set()
+    downloading_parquets = set()
     shards_to_process = filter_parquet_files(path=args.path, 
-                                             completed_parquets=completed_parquets, processing_parquets=processing_parquets)
+                                             completed_parquets=completed_parquets, downloading_parquets=downloading_parquets)
     while not is_download_complete(args.path) or len(shards_to_process) > 0:
         start_time = time.time()
 
         for shard in shards_to_process:
-            processing_parquets.add(shard)
             # check tar file download is complete
             # Download .tar file and extract all files into local cache dicrectory
             if not os.path.exists(os.path.join(args.local, shard)):
                 os.makedirs(os.path.join(args.local, shard))
             tar_filename = os.path.join(args.local, f'{shard}.tar')
-            with lock:
-                if not os.path.exists(tar_filename):
-                    logger.info(f"Starting download of {shard}.tar...")
-                    s3.get(os.path.join(args.path, f'{shard}.tar'), tar_filename)
-                    logger.info(f"Done downloading {shard}.tar!")
-                    logger.info(f"Extracting {shard}.tar...")
-                    with tarfile.open(tar_filename, 'r') as tar:
-                        tar.extractall(os.path.join(args.local, shard))
-                    logger.info(f"Done extracting {shard}.tar!")
+            # with lock:
+            if not os.path.exists(tar_filename):
+                downloading_parquets.add(shard)
+                logger.info(f"Starting download of {shard}.tar...")
+                s3.get(os.path.join(args.path, f'{shard}.tar'), tar_filename)
+                logger.info(f"Done downloading {shard}.tar!")
+                logger.info(f"Extracting {shard}.tar...")
+                with tarfile.open(tar_filename, 'r') as tar:
+                    tar.extractall(os.path.join(args.local, shard))
+                logger.info(f"Done extracting {shard}.tar!")
+                downloading_parquets.remove(shard)
 
             process_parquet(args, queue, writer, shard, completed_parquets, lower_res, upper_res, bucket_id)
 
@@ -311,9 +312,9 @@ def remove_shards(args: Namespace, queue, signal_queue, num_buckets) -> None:
     """Remove shards from local or remote directory as they are completed."""
     logger.info(f'Starting remover process...')
 
-    if not args.wandb_disabled:
-        wandb.init(project=args.wandb_project, entity=args.wandb_entity, name=args.wandb_name)
-        wandb.log({'cloudwriter/remove_path': args.remote})
+    # if not args.wandb_disabled:
+    #     wandb.init(project=args.wandb_project, entity=args.wandb_entity, name=args.wandb_name)
+    #     wandb.log({'cloudwriter/remove_path': args.remote})
     logger.info(f'cloudwriter/remove_path: {args.local}')
 
     start_time = time.time()
@@ -327,8 +328,8 @@ def remove_shards(args: Namespace, queue, signal_queue, num_buckets) -> None:
             completed_map[shard].add(bucket_id)
             if len(completed_map[shard]) == num_buckets:
                 completed_count += 1
-                if not args.wandb_disabled:
-                    wandb.log({'cloudwriter/count': completed_count})
+                # if not args.wandb_disabled:
+                #     wandb.log({'cloudwriter/count': completed_count})
                 logger.info(f'cloudwriter/count: {completed_count}')
                 logger.info(
                     f'Shard {shard} finished. Completed {completed_count} shards in {time.time() - start_time} seconds')
@@ -338,11 +339,13 @@ def remove_shards(args: Namespace, queue, signal_queue, num_buckets) -> None:
                 if not args.keep_cache:
                     os.remove(os.path.join(args.local, f'{shard}.tar'))
                     os.rmdir(os.path.join(args.local, shard))
+                    logger.info(
+                        f'Removed {shard}.tar and {shard} from local cache')
         else:
             time.sleep(1)
 
-        if not args.wandb_disabled:
-            wandb.log({'finished': True})
+        # if not args.wandb_disabled:
+        #     wandb.log({'finished': True})
         logger.info(f'finished: True')
         if not signal_queue.empty():
             break

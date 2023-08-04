@@ -3,6 +3,7 @@ python sbu_cloudwriter.py \
   --local ~/cache/sbu \
   --remote s3://initial-ai-datasets/image/downloaded/sbu-captions-mds/ \
   --keep_parquet \
+  --keep_cache \
   --bucketed \
-  --subfolder 1
+  --subfolder 2
   

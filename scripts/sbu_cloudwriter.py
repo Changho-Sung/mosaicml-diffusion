@@ -1,18 +1,27 @@
-# Copyright 2022 MosaicML Diffusion authors
-# SPDX-License-Identifier: Apache-2.0
+"""Convert and upload SBU Captions parquet shards.
 
-"""Convert and upload LAION parquet shards."""
+This script converts SBU Captions parquet shards into MDS shards and uploads them to S3.
+Usage:
+    python sbu_cloudwriter.py \
+        --path <path> \
+        --local <local> \
+        --remote <remote> \
+        --keep_parquet \
+        --keep_cache \
+        --poll_interval <poll_interval> \
+        --wait_before_start \
+        --bucketed \
+        --subfolder <subfolder>
+"""
 
 import multiprocessing as mp
 import os
 import time
 import warnings
 from argparse import ArgumentParser, Namespace
-from io import BytesIO
 from typing import List, Optional, Set, Union
 
 import numpy as np
-import wandb
 import s3fs
 import aiobotocore
 import tarfile
@@ -67,11 +76,6 @@ def parse_args() -> Namespace:
                       default=None,
                       help='Stores data inside each bucket subfolder. Useful for running multiple '
                       'parallel downloads.')
-    # Add wandb arguments
-    # args.add_argument('--wandb_disabled', action='store_true')
-    # args.add_argument('--wandb_name', type=str, default='baseline')
-    # args.add_argument('--wandb_project', type=str, default='laion-dataset')
-    # args.add_argument('--wandb_entity', type=str, default='mosaic-ml')
     return args.parse_args()
 
 
@@ -89,11 +93,6 @@ def is_download_complete(path: str) -> bool:
         return False
     return s3.exists(os.path.join(path, 'done'))
 
-    # if not os.path.exists(path):
-    #     logger.error(f'Path does not exist!!')
-    #     return False
-    # return os.path.exists(os.path.join(path, 'done'))
-
 
 def filter_parquet_files(path: str, completed_parquets: Set, processing_parquets: Set) -> List:
     """List of parquet files to convert into MDS shards in sorted order.
@@ -108,12 +107,8 @@ def filter_parquet_files(path: str, completed_parquets: Set, processing_parquets
     if not s3.exists(path):
         logger('Path does not exist!!')
         return shards_to_process
-    # if not os.path.exists(path):
-    #     logger.error(f'Path does not exist!!')
-    #     return shards_to_process
 
     for filename in sorted(s3.ls(path)):
-    # for filename in sorted(os.listdir(path)):
         # If _stats.json file is present, the parquet file has finished downloading
         if filename.endswith('_stats.json'):
             idx = os.path.basename(filename).split('_')[0]
@@ -182,15 +177,6 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
     n_rows = table.num_rows
     table = table.to_pandas()
 
-    # # Download .tar file and extract all files into local cache dicrectory
-    # if not os.path.exists(os.path.join(args.local, shard)):
-    #     os.makedirs(os.path.join(args.local, shard))
-    # tar_filename = os.path.join(args.local, f'{shard}.tar')
-    # if not os.path.exists(tar_filename):
-    #     s3.get(os.path.join(args.path, f'{shard}.tar'), tar_filename)
-    #     with tarfile.open(tar_filename, 'r') as tar:
-    #         tar.extractall(os.path.join(args.local, shard))
-
     # Iterate through rows of parquet file
     for i in tqdm(range(n_rows)):
         x = table.iloc[i].copy()
@@ -239,10 +225,11 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
 
     # Mark shard as done for this bucket
     queue.put((shard, bucket_id))
-    # print(f'Process {process_id} for bucket {bucket_id} completed shard {shard}...')
 
     # Add shard to completed set
     completed_parquets.add(shard)
+
+    logger.info(f'Completed {shard} shard for bucket {bucket_id}...')
 
 
 def convert_and_upload_shards(args: Namespace, queue, lock, lower_res: int, upper_res: int, bucket_id: int):
@@ -302,7 +289,7 @@ def convert_and_upload_shards(args: Namespace, queue, lock, lower_res: int, uppe
         if elapsed_time < args.poll_interval:
             time.sleep(args.poll_interval - elapsed_time)
 
-        shards_to_process = filter_parquet_files(path=args.path, completed_parquets=completed_parquets)
+        shards_to_process = filter_parquet_files(path=args.path, completed_parquets=completed_parquets, processing_parquets=processing_parquets)
 
     writer.finish()
     logger.info(f'Finished uploader process for bucket {bucket_id}...')
@@ -311,10 +298,6 @@ def convert_and_upload_shards(args: Namespace, queue, lock, lower_res: int, uppe
 def remove_shards(args: Namespace, queue, signal_queue, num_buckets) -> None:
     """Remove shards from local or remote directory as they are completed."""
     logger.info(f'Starting remover process...')
-
-    # if not args.wandb_disabled:
-    #     wandb.init(project=args.wandb_project, entity=args.wandb_entity, name=args.wandb_name)
-    #     wandb.log({'cloudwriter/remove_path': args.remote})
     logger.info(f'cloudwriter/remove_path: {args.local}')
 
     start_time = time.time()
@@ -328,8 +311,6 @@ def remove_shards(args: Namespace, queue, signal_queue, num_buckets) -> None:
             completed_map[shard].add(bucket_id)
             if len(completed_map[shard]) == num_buckets:
                 completed_count += 1
-                # if not args.wandb_disabled:
-                #     wandb.log({'cloudwriter/count': completed_count})
                 logger.info(f'cloudwriter/count: {completed_count}')
                 logger.info(
                     f'Shard {shard} finished. Completed {completed_count} shards in {time.time() - start_time} seconds')
@@ -344,8 +325,6 @@ def remove_shards(args: Namespace, queue, signal_queue, num_buckets) -> None:
         else:
             time.sleep(1)
 
-        # if not args.wandb_disabled:
-        #     wandb.log({'finished': True})
         logger.info(f'finished: True')
         if not signal_queue.empty():
             break
@@ -373,13 +352,12 @@ def main(args: Namespace) -> None:
                               args=(args, queue, lock, bin_resolutions[bucket_id], bin_resolutions[bucket_id + 1], bucket_id))
         uploader.start()
         uploaders.append(uploader)
-
+    remove = mp.Process(target=remove_shards, args=(args, queue, signal_queue, len(bin_resolutions) - 1))
+    remove.start()
+    
     for uploader in uploaders:
         uploader.join()
     signal_queue.put(1)
-
-    remove = mp.Process(target=remove_shards, args=(args, queue, signal_queue, len(bin_resolutions) - 1))
-    remove.start()
     remove.join()
 
 

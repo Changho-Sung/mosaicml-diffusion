@@ -92,7 +92,7 @@ def is_download_complete(path: str) -> bool:
         logger.error(f'Path does not exist!!')
         return False
     # return s3.exists(os.path.join(path, 'done'))
-    return true
+    return True
 
 
 def filter_parquet_files(path: str, completed_parquets: Set, processing_parquets: Set) -> List:

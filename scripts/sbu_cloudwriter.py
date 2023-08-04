@@ -325,7 +325,7 @@ def remove_shards(args: Namespace, queue, signal_queue, num_buckets) -> None:
         else:
             time.sleep(1)
 
-        logger.info(f'finished: True')
+        # logger.info(f'finished: True')
         if not signal_queue.empty():
             break
     logger.info(f'Finished remover process...')

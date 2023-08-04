@@ -109,7 +109,7 @@ def filter_parquet_files(path: str, completed_parquets: Set, processing_parquets
         logger('Path does not exist!!')
         return shards_to_process
 
-    for filename in sorted(s3.ls(path))[:5]:
+    for filename in sorted(s3.ls(path)):
         # If _stats.json file is present, the parquet file has finished downloading
         if filename.endswith('_stats.json'):
             idx = os.path.basename(filename).split('_')[0]
@@ -200,6 +200,7 @@ def process_parquet(args, queue, writer, shard, completed_parquets, lower_res, u
                 width, height = img.size
                 # convert .jpg to binary
                 img_binary = img.tobytes()
+                
                 x['jpg'] = img_binary
             except Exception as e:
                 # print(e)

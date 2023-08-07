@@ -30,7 +30,9 @@ def main(args):
     import pdb; pdb.set_trace()
     data_path = args.data_path
     captions_path = args.annotation_path
-    data = json.loads(captions_path)
+    # data = json.loads(captions_path)
+    with open(captions_path, 'r') as f:
+        data = json.load(f.read())
 
     # create {image_id: list[captions]} dictionary
     coco_captions = {}

@@ -27,7 +27,6 @@ args.add_argument('--remote', type=str, default='', help='Remote path to upload 
 
 def main(args):
     """Converts coco captions to MDS."""
-    import pdb; pdb.set_trace()
     data_path = args.data_path
     captions_path = args.annotation_path
     # data = json.loads(captions_path)

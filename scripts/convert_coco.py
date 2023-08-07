@@ -31,7 +31,7 @@ def main(args):
     captions_path = args.annotation_path
     # data = json.loads(captions_path)
     with open(captions_path, 'r') as f:
-        data = json.load(f.read())
+        data = json.loads(f.read())
 
     # create {image_id: list[captions]} dictionary
     coco_captions = {}

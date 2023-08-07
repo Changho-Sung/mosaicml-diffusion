@@ -327,6 +327,7 @@ def main(args: Namespace) -> None:
 
         dist.barrier()
         max_sample_idx += args.batch_size * dist.get_world_size()
+        continue
         # Remove completed shards
         if batch_idx % 10 == 0 and dist.get_local_rank() == 0:
             shard_sample_offset = 0

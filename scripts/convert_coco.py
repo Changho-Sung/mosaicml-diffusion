@@ -28,7 +28,7 @@ args.add_argument('--remote', type=str, default='', help='Remote path to upload 
 def main(args):
     """Converts coco captions to MDS."""
     data_path = args.data_path
-    captions_path = args.captions_path
+    captions_path = args.annotation_path
     data = json.loads(captions_path)
 
     # create {image_id: list[captions]} dictionary

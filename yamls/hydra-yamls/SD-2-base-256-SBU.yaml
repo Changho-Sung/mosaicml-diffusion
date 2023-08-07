@@ -1,8 +1,8 @@
-project: # Insert wandb project name
+project: 256-SBU
 batch_size: 2048
 seed: 17
 scale_schedule_ratio: 1.0
-name: # Insert wandb run name
+name: 256_SBU_TMP
 eval_first: false
 algorithms:
   low_precision_groupnorm:
@@ -26,8 +26,8 @@ dataset:
   eval_batch_size: 1024 # Should be 8 per device
   train_dataset:
     _target_: diffusion.datasets.sbu.sbu.build_streaming_sbu_dataloader
-    remote: s3://initial-ai-datasets/image/downloaded/sbu-captions/ # Path to object store bucket(s)
-    local:  ./datasets/sbu-captions/ # Path to corresponding local dataset(s)
+    remote: s3://initial-ai-datasets/image/processed/sbu-captions/ # Path to object store bucket(s)
+    local:  ~/cache/datasets/sbu/ # Path to corresponding local dataset(s)
     batch_size: ${batch_size}
     tokenizer_name_or_path: stabilityai/stable-diffusion-2-base
     caption_drop_prob: 0.1
@@ -42,8 +42,8 @@ dataset:
     num_canonical_nodes: 64
   eval_dataset:
     _target_: diffusion.datasets.coco.coco_captions.build_streaming_cocoval_dataloader
-    remote:  # Path to object store bucket
-    local: # Path to local dataset cache
+    remote:  s3://initial-ai-datasets/image/processed/coco-mds/ # Path to object store bucket
+    local: ~/cache/datasets/coco/ # Path to local dataset cache
     batch_size: 8
     resize_size: 256
     prefetch_factor: 2

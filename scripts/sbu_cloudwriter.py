@@ -110,7 +110,7 @@ def filter_parquet_files(path: str, completed_parquets: Set, processing_parquets
         logger('Path does not exist!!')
         return shards_to_process
 
-    for filename in sorted(s3.ls(path))[:100]:
+    for filename in sorted(s3.ls(path))[:25]:
         # If _stats.json file is present, the parquet file has finished downloading
         if filename.endswith('_stats.json'):
             idx = os.path.basename(filename).split('_')[0]
